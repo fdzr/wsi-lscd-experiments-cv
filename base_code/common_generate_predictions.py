@@ -34,7 +34,7 @@ def get_adj_matrix(
     normalize: bool,
     threshold: float = 0.5,
     scaler: typing.Callable = None,
-    wic_score: bool = False,
+    wic_score: bool = True,
 ):
     logging.info("building adjacency matrix ...")
     matrix = np.zeros((n_sentences, n_sentences), dtype="float")
@@ -44,7 +44,7 @@ def get_adj_matrix(
         else:
             np.fill_diagonal(matrix, 4.0)
 
-    if normalize is True:
+    if wic_score is True:
         scores["score"] = scaler.transform(scores["score"].to_numpy().reshape(-1, 1))
 
         threshold = scaler.transform([[threshold]]).item()
@@ -317,8 +317,8 @@ def get_predictions(
             n_sentences,
             hyperparameter_combinations["fill_diagonal"],
             hyperparameter_combinations["normalize"],
-            threshold=...,
-            scaler=...,
+            threshold=metadata["threshold"],
+            scaler=metadata["scaler"],
         )
 
         logging.info("calculating predictions ...")
@@ -379,6 +379,8 @@ def get_predictions_without_nclusters(
             n_sentences,
             hyperparameter_combinations["fill_diagonal"],
             hyperparameter_combinations["normalize"],
+            threshold=metadata["threshold"],
+            scaler=metadata["scaler"],
         )
 
         logging.info("calculating predictions ...")
@@ -413,6 +415,13 @@ def eval(
 
     metadata["name_file"] = "results_testing_set"
 
+    metadata.pop("scaler", None)
+    metadata.pop("threshold", None)
+
+    metadata.update(
+        {"scaler": parameters["scaler"], "threshold": parameters["threshold"]}
+    )
+
     for hyperparameters in [parameters]:
         if metadata["method"] in ["ac", "sc"]:
             jsd = get_predictions(
@@ -434,6 +443,10 @@ def eval(
             f"../cv-experiments-lscd/{metadata['method']}/{metadata['llm']}/{metadata['dataset']}/{metadata['prompt']}/{metadata['kfold']}_fold/testing.csv",
         )
         logging.info("  results saved ...")
+
+        metadata.pop("scaler", None)
+        metadata.pop("threshold", None)
+        parameters.pop("scaler", None)
 
         return spr
 
@@ -460,11 +473,13 @@ def train(
     scaler = get_scaler(scores["score"])
 
     metadata.pop("scaler", None)
-    metadata.pop("thresholds", None)
-    metadata.update({"scaler": scaler, "thresholds": thresholds})
+    metadata.pop("threshold", None)
+    metadata.update({"scaler": scaler})
 
     for index, hyperparameter in enumerate(hyperparameter_combinations):
         logging.info(f"  {index + 1}/{number_iterations} - {hyperparameter}")
+
+        metadata.update({"threshold": thresholds[hyperparameter["threshold"]]})
 
         if method in ["ac", "sc"]:
             try:
