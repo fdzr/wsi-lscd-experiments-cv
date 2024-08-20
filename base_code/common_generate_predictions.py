@@ -457,6 +457,11 @@ def train(
     for index, hyperparameter in enumerate(hyperparameter_combinations):
         logging.info(f"  {index + 1}/{number_iterations} - {hyperparameter}")
 
+        thresholds = get_thresholds(scores["score"])
+        scaler = get_scaler(scores["score"])
+
+        metadata.update({"scaler": scaler, "thresholds": thresholds})
+
         if method in ["ac", "sc"]:
             try:
                 jsd = get_predictions(
@@ -493,7 +498,9 @@ def train(
 
         if spr > max_spr_lscd:
             max_spr_lscd = spr
-            optimal_parameters = hyperparameter
+            optimal_parameters = copy.deepcopy(hyperparameter)
+            optimal_parameters["scaler"] = scaler
+            optimal_parameters["threshold"] = thresholds[hyperparameter["quantile"]]
 
     return {"max_spr_lscd": max_spr_lscd, "optimal_parameters": optimal_parameters}
 
