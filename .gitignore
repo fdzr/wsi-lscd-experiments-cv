@@ -1,0 +1,12 @@
+dwug_de_sense/
+dwug_de_sense.zip
+dwug_es/
+dwug_en/
+input/
+DMlong-latestDWUGdeSense-6wics/
+test_data*
+results.zip
+cv-experiments-lscd/
+experiments-dwug/
+*.nbconvert*.ipynb
+**__pycache__/
