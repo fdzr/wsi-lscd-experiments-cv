@@ -32,27 +32,30 @@ def get_adj_matrix(
     n_sentences,
     fill_diagonal: bool,
     normalize: bool,
+    threshold: float = 0.5,
+    scaler: typing.Callable = None,
+    wic_score: bool = False,
 ):
     logging.info("building adjacency matrix ...")
     matrix = np.zeros((n_sentences, n_sentences), dtype="float")
     if fill_diagonal is True:
-        if normalize is True:
+        if wic_score is True or normalize is True:
             np.fill_diagonal(matrix, 1.0)
         else:
             np.fill_diagonal(matrix, 4.0)
 
     if normalize is True:
-        scaler = MinMaxScaler()
-        scores["score"] = scaler.fit_transform(
-            scores["score"].to_numpy().reshape(-1, 1)
-        )
+        scores["score"] = scaler.transform(scores["score"].to_numpy().reshape(-1, 1))
+
+        threshold = scaler.transform([[threshold]]).item()
 
     for _, row in scores.iterrows():
         x = id2int[ShortUse(row["word"], row["identifier1"])]
         y = id2int[ShortUse(row["word"], row["identifier2"])]
 
         try:
-            matrix[x, y] = matrix[y, x] = int(row["score"])
+            if row["score"] >= threshold:
+                matrix[x, y] = matrix[y, x] = row["score"]
         except Exception:
             print(scores.word)
             sys.exit(1)
