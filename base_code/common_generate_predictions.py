@@ -319,6 +319,7 @@ def get_predictions(
             hyperparameter_combinations["normalize"],
             threshold=metadata["threshold"],
             scaler=metadata["scaler"],
+            wic_score=metadata["wic_data"],
         )
 
         logging.info("calculating predictions ...")
@@ -381,6 +382,7 @@ def get_predictions_without_nclusters(
             hyperparameter_combinations["normalize"],
             threshold=metadata["threshold"],
             scaler=metadata["scaler"],
+            wic_score=metadata["wic_data"],
         )
 
         logging.info("calculating predictions ...")
@@ -479,7 +481,7 @@ def train(
     for index, hyperparameter in enumerate(hyperparameter_combinations):
         logging.info(f"  {index + 1}/{number_iterations} - {hyperparameter}")
 
-        metadata.update({"threshold": thresholds[hyperparameter["threshold"]]})
+        metadata.update({"threshold": thresholds[hyperparameter["quantile"]]})
 
         if method in ["ac", "sc"]:
             try:
