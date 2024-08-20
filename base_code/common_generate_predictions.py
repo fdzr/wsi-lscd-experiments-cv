@@ -242,29 +242,37 @@ def get_thresholds(scores: pd.Series):
 
 
 def generate_hyperparameter_combinations(
-    model_hyperparameter_combinations: list, fill_diagonal: bool, normalize: bool
+    model_hyperparameter_combinations: list,
+    fill_diagonal: bool,
+    normalize: bool,
+    quantile: int = 10,
 ):
     hyperparameter_combinations = []
 
-    for fd in [True, False] if fill_diagonal is True else [False]:
-        for nm in [False] if normalize is False else [False, True]:
-            for combination in model_hyperparameter_combinations:
-                if "distribution" in combination:
-                    if (
-                        combination["distribution"].startswith("discrete")
-                        and nm is True
-                    ):
-                        continue
-                    if combination["distribution"].startswith("real") and nm is False:
-                        continue
+    for q in range(quantile):
+        for fd in [True, False] if fill_diagonal is True else [False]:
+            for nm in [False] if normalize is False else [False, True]:
+                for combination in model_hyperparameter_combinations:
+                    if "distribution" in combination:
+                        if (
+                            combination["distribution"].startswith("discrete")
+                            and nm is True
+                        ):
+                            continue
+                        if (
+                            combination["distribution"].startswith("real")
+                            and nm is False
+                        ):
+                            continue
 
-                hyperparameter_combinations.append(
-                    {
-                        "fill_diagonal": fd,
-                        "normalize": nm,
-                        "model_hyperparameters": combination,
-                    }
-                )
+                    hyperparameter_combinations.append(
+                        {
+                            "quantile": q,
+                            "fill_diagonal": fd,
+                            "normalize": nm,
+                            "model_hyperparameters": combination,
+                        }
+                    )
 
     return hyperparameter_combinations
 
