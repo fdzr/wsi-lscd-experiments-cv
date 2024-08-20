@@ -317,6 +317,8 @@ def get_predictions(
             n_sentences,
             hyperparameter_combinations["fill_diagonal"],
             hyperparameter_combinations["normalize"],
+            threshold=...,
+            scaler=...,
         )
 
         logging.info("calculating predictions ...")
@@ -454,13 +456,15 @@ def train(
 
     logging.info(f"prompt: {prompt}")
 
+    thresholds = get_thresholds(scores["score"])
+    scaler = get_scaler(scores["score"])
+
+    metadata.pop("scaler", None)
+    metadata.pop("thresholds", None)
+    metadata.update({"scaler": scaler, "thresholds": thresholds})
+
     for index, hyperparameter in enumerate(hyperparameter_combinations):
         logging.info(f"  {index + 1}/{number_iterations} - {hyperparameter}")
-
-        thresholds = get_thresholds(scores["score"])
-        scaler = get_scaler(scores["score"])
-
-        metadata.update({"scaler": scaler, "thresholds": thresholds})
 
         if method in ["ac", "sc"]:
             try:
