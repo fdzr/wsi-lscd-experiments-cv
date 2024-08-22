@@ -55,7 +55,7 @@ def get_adj_matrix(
 
         try:
             if row["score"] >= threshold:
-                matrix[x, y] = matrix[y, x] = row["score"]
+                matrix[x, y] = matrix[y, x] = 1 if normalize is True else row["score"]
         except Exception:
             print(scores.word)
             sys.exit(1)
@@ -584,7 +584,9 @@ def grid_search_without_nclusters(
     # scores = get_data()
     scores = {}
     for prompt in metadata["prompts"]:
-        scores[prompt] = load_data(f"{metadata['path_to_data']}/{prompt}")
+        scores[prompt] = load_data(
+            f"{metadata['path_to_data']}/{prompt}", wic_data=metadata["wic_data"]
+        )
 
     if metadata["dataset"] == "dwug_en":
         create_grouping(scores, metadata["prompts"])
