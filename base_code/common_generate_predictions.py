@@ -81,11 +81,21 @@ def load_data(path: str, wic_data=False):
             print(p.parts[-1], e)
 
         data["word"] = unicodedata.normalize("NFC", word)
+
         data_to_concatenate.append(copy.deepcopy(data))
 
     annotated_data = pd.concat(data_to_concatenate, ignore_index=True)
     mask = annotated_data["score"] == "-"
     filtered_data = annotated_data[~mask]
+
+    # if True:
+    #     filtered_data.drop(columns=["score"], inplace=True)
+    #     sample_len = filtered_data.shape[0]
+
+    #     logging.info("generating random numbers ...")
+    #     numbers = [random.randint(1, 4) for _ in range(sample_len)]
+
+    #     filtered_data["score"] = numbers
 
     logging.info("data loaded ...")
 
@@ -358,6 +368,8 @@ def get_predictions_without_nclusters(
     name_file = metadata["name_file"]
 
     for word in words:
+        logging.info(f"processing word: {word}")
+
         mask = scores["word"] == word
         filtered_scores = scores[mask]
 

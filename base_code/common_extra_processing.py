@@ -14,8 +14,10 @@ def build_id(row: pd.Series):
     preffix = "old" if year < 1900 else "new"
     row["identifier2"] = f"{preffix}_{row['identifier2']}"
 
+    return row
+
 
 def create_grouping(data: dict, prompts):
     for prompt in prompts:
         full_data = data[prompt]
-        full_data.apply(lambda row: build_id(row), axis=1)
+        data[prompt] = full_data.apply(lambda row: build_id(row), axis=1)
