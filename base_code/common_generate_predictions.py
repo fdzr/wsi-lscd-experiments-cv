@@ -39,14 +39,13 @@ def get_adj_matrix(
     logging.info("building adjacency matrix ...")
     matrix = np.zeros((n_sentences, n_sentences), dtype="float")
     if fill_diagonal is True:
-        if wic_score is True or normalize is True:
-            np.fill_diagonal(matrix, 1.0)
-        else:
-            np.fill_diagonal(matrix, 4.0)
+        diagonal_value = 1.0 if wic_score is True or normalize is True else 4.0
+        np.fill_diagonal(matrix, diagonal_value)
 
-    if wic_score is True:
+    if wic_score is True or normalize is True:
         scores["score"] = scaler.transform(scores["score"].to_numpy().reshape(-1, 1))
 
+    if wic_score is True:
         threshold = scaler.transform([[threshold]]).item()
 
     for _, row in scores.iterrows():
@@ -55,7 +54,13 @@ def get_adj_matrix(
 
         try:
             if row["score"] >= threshold:
-                matrix[x, y] = matrix[y, x] = 1 if normalize is True else row["score"]
+                if wic_score is True:
+                    matrix[x, y] = matrix[y, x] = (
+                        1 if normalize is True else row["score"]
+                    )
+                else:
+                    matrix[x, y] = matrix[y, x] = row["score"]
+
         except Exception:
             print(scores.word)
             sys.exit(1)
@@ -87,15 +92,6 @@ def load_data(path: str, wic_data=False):
     annotated_data = pd.concat(data_to_concatenate, ignore_index=True)
     mask = annotated_data["score"] == "-"
     filtered_data = annotated_data[~mask]
-
-    # if True:
-    #     filtered_data.drop(columns=["score"], inplace=True)
-    #     sample_len = filtered_data.shape[0]
-
-    #     logging.info("generating random numbers ...")
-    #     numbers = [random.randint(1, 4) for _ in range(sample_len)]
-
-    #     filtered_data["score"] = numbers
 
     logging.info("data loaded ...")
 
@@ -178,7 +174,7 @@ def save_cv_results(results: dict, metadata: dict = None):
     spr_lscd_training = []
     spr_lscd_testing = []
 
-    path_to_save = f"../cv-experiments-lscd/{metadata['method']}/{metadata['llm']}/{metadata['dataset']}/{metadata['prompt']}/final_results.txt"
+    path_to_save = f"{metadata['path_to_save_results']}/final_results.txt"
 
     for fold in range(1, 6):
         spr_lscd_training.append(results[fold]["training"]["max_spr_lscd"])
@@ -251,42 +247,6 @@ def get_thresholds(scores: pd.Series):
     return [0.5] + list(np.quantile(scores, np.arange(0.1, 1.0, 0.1)))
 
 
-def generate_hyperparameter_combinations(
-    model_hyperparameter_combinations: list,
-    fill_diagonal: bool,
-    normalize: bool,
-    quantile: int = 10,
-):
-    hyperparameter_combinations = []
-
-    for q in range(quantile):
-        for fd in [True, False] if fill_diagonal is True else [False]:
-            for nm in [False] if normalize is False else [False, True]:
-                for combination in model_hyperparameter_combinations:
-                    if "distribution" in combination:
-                        if (
-                            combination["distribution"].startswith("discrete")
-                            and nm is True
-                        ):
-                            continue
-                        if (
-                            combination["distribution"].startswith("real")
-                            and nm is False
-                        ):
-                            continue
-
-                    hyperparameter_combinations.append(
-                        {
-                            "quantile": q,
-                            "fill_diagonal": fd,
-                            "normalize": nm,
-                            "model_hyperparameters": combination,
-                        }
-                    )
-
-    return hyperparameter_combinations
-
-
 def get_predictions(
     get_clusters: typing.Callable,
     scores: pd.DataFrame,
@@ -297,10 +257,6 @@ def get_predictions(
     words = scores.word.unique()
     jsd = {}
 
-    method = metadata["method"]
-    llm = metadata["llm"]
-    dataset = metadata["dataset"]
-    prompt = metadata["prompt"]
     kfold = metadata["kfold"]
     name_file = metadata["name_file"]
 
@@ -342,7 +298,7 @@ def get_predictions(
             word,
             jsd[word],
             hyperparameter_combinations,
-            f"../cv-experiments-lscd/{method}/{llm}/{dataset}/{prompt}/{kfold}_fold/{name_file}.csv",
+            f"{metadata['path_to_save_results']}/{kfold}_fold/{name_file}.csv",
         )
 
     logging.info("returning predictions ...")
@@ -360,10 +316,6 @@ def get_predictions_without_nclusters(
     words = scores.word.unique()
     jsd = {}
 
-    method = metadata["method"]
-    llm = metadata["llm"]
-    dataset = metadata["dataset"]
-    prompt = metadata["prompt"]
     kfold = metadata["kfold"]
     name_file = metadata["name_file"]
 
@@ -392,8 +344,8 @@ def get_predictions_without_nclusters(
             n_sentences,
             hyperparameter_combinations["fill_diagonal"],
             hyperparameter_combinations["normalize"],
-            threshold=metadata["threshold"],
-            scaler=metadata["scaler"],
+            threshold=metadata["threshold"] if metadata["wic_data"] is True else -1.0,
+            scaler=metadata["scaler"] if metadata["wic_data"] is True else None,
             wic_score=metadata["wic_data"],
         )
 
@@ -409,7 +361,7 @@ def get_predictions_without_nclusters(
             word,
             jsd[word],
             hyperparameter_combinations,
-            f"../cv-experiments-lscd/{method}/{llm}/{dataset}/{prompt}/{kfold}_fold/{name_file}.csv",
+            f"{metadata['path_to_save_results']}/{kfold}_fold/{name_file}.csv",
         )
 
         logging.info("predictions calculated ...")
@@ -421,7 +373,8 @@ def get_predictions_without_nclusters(
 
 def eval(
     get_clusters: typing.Callable,
-    scores: pd.DataFrame,
+    scores: dict[str, pd.DataFrame],
+    test_set: list,
     parameters: dict,
     metadata: dict,
 ):
@@ -429,21 +382,25 @@ def eval(
 
     metadata["name_file"] = "results_testing_set"
 
-    metadata.pop("scaler", None)
-    metadata.pop("threshold", None)
+    if metadata["wic_data"] is True:
+        metadata.pop("scaler", None)
+        metadata.pop("threshold", None)
 
-    metadata.update(
-        {"scaler": parameters["scaler"], "threshold": parameters["threshold"]}
-    )
+        metadata.update(
+            {"scaler": parameters["scaler"], "threshold": parameters["threshold"]}
+        )
 
     for hyperparameters in [parameters]:
+        score_filtered = copy.deepcopy(scores[hyperparameters["prompt"]])
+        test_scores = score_filtered[score_filtered["word"].isin(test_set)]
+
         if metadata["method"] in ["ac", "sc"]:
             jsd = get_predictions(
-                get_clusters, scores, hyperparameters, metadata=metadata
+                get_clusters, test_scores, hyperparameters, metadata=metadata
             )
         else:
             jsd = get_predictions_without_nclusters(
-                get_clusters, scores, hyperparameters, metadata=metadata
+                get_clusters, test_scores, hyperparameters, metadata=metadata
             )
 
         logging.info("  calculating correlation ...")
@@ -454,13 +411,12 @@ def eval(
         save_correlation(
             spr,
             hyperparameters,
-            f"../cv-experiments-lscd/{metadata['method']}/{metadata['llm']}/{metadata['dataset']}/{metadata['prompt']}/{metadata['kfold']}_fold/testing.csv",
+            f"{metadata['path_to_save_results']}/{metadata['kfold']}_fold/testing.csv",
         )
         logging.info("  results saved ...")
 
         metadata.pop("scaler", None)
         metadata.pop("threshold", None)
-        parameters.pop("scaler", None)
 
         return spr
 
@@ -468,37 +424,38 @@ def eval(
 def train(
     get_clusters: typing.Callable,
     scores: pd.DataFrame,
+    train_set: list,
     hyperparameter_combinations: list,
     metadata: dict = None,
 ):
     method = metadata["method"]
     optimal_parameters = None
     max_spr_lscd = float("-inf")
-    prompt = metadata["prompt"]
 
     metadata.update({"name_file": "results_training_set"})
 
     logging.info(f"training {method} method ...")
     number_iterations = len(hyperparameter_combinations)
 
-    logging.info(f"prompt: {prompt}")
-
-    thresholds = get_thresholds(scores["score"])
-    scaler = get_scaler(scores["score"])
-
-    metadata.pop("scaler", None)
-    metadata.pop("threshold", None)
-    metadata.update({"scaler": scaler})
-
     for index, hyperparameter in enumerate(hyperparameter_combinations):
         logging.info(f"  {index + 1}/{number_iterations} - {hyperparameter}")
 
-        metadata.update({"threshold": thresholds[hyperparameter["quantile"]]})
+        score_filtered = copy.deepcopy(scores[hyperparameter["prompt"]])
+        train_scores = score_filtered[score_filtered["word"].isin(train_set)]
+
+        if metadata["wic_data"] is True:
+            thresholds = get_thresholds(train_scores["score"])
+            scaler = get_scaler(train_scores["score"])
+
+            metadata.update({"scaler": scaler})
+            metadata.update({"threshold": thresholds[hyperparameter["quantile"]]})
+            metadata.pop("scaler", None)
+            metadata.pop("threshold", None)
 
         if method in ["ac", "sc"]:
             try:
                 jsd = get_predictions(
-                    get_clusters, scores, hyperparameter, metadata=metadata
+                    get_clusters, train_scores, hyperparameter, metadata=metadata
                 )
             except Exception as e:
                 logging.error(f"error processing parameters: {hyperparameter}")
@@ -508,7 +465,7 @@ def train(
         else:
             try:
                 jsd = get_predictions_without_nclusters(
-                    get_clusters, scores, hyperparameter, metadata=metadata
+                    get_clusters, train_scores, hyperparameter, metadata=metadata
                 )
             except Exception:
                 logging.error(f"error processing parameters: {hyperparameter}")
@@ -525,15 +482,17 @@ def train(
         save_correlation(
             spr,
             hyperparameter,
-            f"../cv-experiments-lscd/{method}/{metadata['llm']}/{metadata['dataset']}/{prompt}/{metadata['kfold']}_fold/training.csv",
+            f"{metadata['path_to_save_results']}/{metadata['kfold']}_fold/training.csv",
         )
         logging.info("  results saved ...")
 
         if spr > max_spr_lscd:
             max_spr_lscd = spr
             optimal_parameters = copy.deepcopy(hyperparameter)
-            optimal_parameters["scaler"] = scaler
-            optimal_parameters["threshold"] = thresholds[hyperparameter["quantile"]]
+
+            if metadata["wic_data"] is True:
+                optimal_parameters["scaler"] = scaler
+                optimal_parameters["threshold"] = thresholds[hyperparameter["quantile"]]
 
     return {"max_spr_lscd": max_spr_lscd, "optimal_parameters": optimal_parameters}
 
@@ -551,28 +510,29 @@ def cross_validation(
         train_set = cv[dataset][index]["train"]
         test_set = cv[dataset][index]["test"]
 
-        train_scores = scores[scores.word.isin(train_set)]
-        test_scores = scores[scores.word.isin(test_set)]
-
         metadata.update({"kfold": index})
 
         configuration = train(
             get_clusters,
-            copy.deepcopy(train_scores),
+            scores,
+            train_set,
             hyperparameter_combinations,
             metadata=metadata,
         )
 
         spr = eval(
             get_clusters,
-            copy.deepcopy(test_scores),
+            scores,
+            test_set,
             configuration["optimal_parameters"],
             metadata,
         )
 
         results[index] = {"training": configuration, "testing": spr}
 
-        path_to_save = f"../cv-experiments-lscd/{metadata['method']}/{metadata['llm']}/{metadata['dataset']}/{metadata['prompt']}/{index}_fold/verbose_results.txt"
+        path_to_save = (
+            f"{metadata['path_to_save_results']}/{index}_fold/verbose_results.txt"
+        )
         with open(path_to_save, "a") as f_out:
             f_out.write("best parameters for training: \n")
             f_out.write(f"  {configuration['optimal_parameters']}\n")
@@ -590,35 +550,24 @@ def cross_validation(
 def grid_search_without_nclusters(
     get_data: typing.Callable,
     get_clusters: typing.Callable,
-    model_hyperparameter_combinations: list,
+    hyperparameter_combinations: list,
     metadata: dict = None,
 ):
     # scores = get_data()
     scores = {}
-    for prompt in metadata["prompts"]:
-        scores[prompt] = load_data(
-            f"{metadata['path_to_data']}/{prompt}", wic_data=metadata["wic_data"]
+    for sp in metadata["score_paths"]:
+        scores[sp] = load_data(
+            f"{metadata['path_to_data']}/{sp}", wic_data=metadata["wic_data"]
         )
 
     if metadata["dataset"] == "dwug_en":
         create_grouping(scores, metadata["prompts"])
 
-    hyperparameter_combinations = generate_hyperparameter_combinations(
-        model_hyperparameter_combinations,
-        metadata["fill_diagonal"],
-        metadata["normalize"],
+    results = cross_validation(
+        hyperparameter_combinations, get_clusters, scores, metadata=metadata
     )
 
-    for prompt in metadata["prompts"]:
-        logging.info(f"prompt: {prompt}")
-
-        metadata.update({"prompt": prompt})
-
-        results = cross_validation(
-            hyperparameter_combinations, get_clusters, scores[prompt], metadata=metadata
-        )
-
-        save_cv_results(results, metadata=metadata)
+    save_cv_results(results, metadata=metadata)
 
 
 def grid_search(
