@@ -240,7 +240,7 @@ def calculate_correlation(jsd: dict[str, Results], path_to_gold_data):
             pred_change_graded.append(jsd[proccesed_word].jsd)
             gold_change_graded.append(gold_data[proccesed_word][0])
         except Exception as e:
-            logging.warning(f"    {word} is not a tw from the competence ...")
+            logging.warning(f"    {word} is not a tw from the competition...")
 
     spr = spearmanr(gold_change_graded, pred_change_graded)[0]
     return spr
