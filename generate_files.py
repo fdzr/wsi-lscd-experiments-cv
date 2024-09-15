@@ -22,7 +22,7 @@ result_per_word = pd.DataFrame(
 correlation_results = pd.DataFrame({"correlation": [], "parameters": []})
 
 methods = ["wsbm"]
-llms = ["llama3.1-8B", "mixtral-8xtb-v0.1"]
+llms = ["wic"]
 datasets = ["dwug_es", "dwug_en"]
 
 path_to_folder = Path(f"./cv-apd-experiments-lscd")
