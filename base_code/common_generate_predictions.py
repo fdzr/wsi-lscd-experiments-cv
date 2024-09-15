@@ -42,11 +42,14 @@ def get_adj_matrix(
         diagonal_value = 1.0 if wic_score is True or normalize is True else 4.0
         np.fill_diagonal(matrix, diagonal_value)
 
-    if wic_score is True or normalize is True:
+    if wic_score is True and normalize is False:
         scores["score"] = scaler.transform(scores["score"].to_numpy().reshape(-1, 1))
-
-    if wic_score is True:
         threshold = scaler.transform([[threshold]]).item()
+
+    if normalize is True and wic_score is False:
+        scores["score"] = get_scaler(scores["score"]).transform(
+            scores["score"].to_numpy().reshape(-1, 1)
+        )
 
     for _, row in scores.iterrows():
         x = id2int[ShortUse(row["word"], row["identifier1"])]
@@ -61,8 +64,10 @@ def get_adj_matrix(
                 else:
                     matrix[x, y] = matrix[y, x] = row["score"]
 
-        except Exception:
-            print(scores.word)
+        except Exception as e:
+            print(row["score"])
+            print(scores.word[0])
+            print(e)
             sys.exit(1)
 
     logging.info("adjacency matrix built ...")
@@ -92,6 +97,8 @@ def load_data(path: str, wic_data=False):
     annotated_data = pd.concat(data_to_concatenate, ignore_index=True)
     mask = annotated_data["score"] == "-"
     filtered_data = annotated_data[~mask]
+
+    filtered_data["score"] = pd.to_numeric(filtered_data["score"], errors="raise")
 
     logging.info("data loaded ...")
 
@@ -233,7 +240,7 @@ def calculate_correlation(jsd: dict[str, Results], path_to_gold_data):
             pred_change_graded.append(jsd[proccesed_word].jsd)
             gold_change_graded.append(gold_data[proccesed_word][0])
         except Exception as e:
-            logging.warn(f"    {word} is not a tw from the competence ...")
+            logging.warning(f"    {word} is not a tw from the competence ...")
 
     spr = spearmanr(gold_change_graded, pred_change_graded)[0]
     return spr
@@ -283,8 +290,8 @@ def get_predictions(
             n_sentences,
             hyperparameter_combinations["fill_diagonal"],
             hyperparameter_combinations["normalize"],
-            threshold=metadata["threshold"],
-            scaler=metadata["scaler"],
+            threshold=metadata["threshold"] if metadata["wic_data"] is True else -1.0,
+            scaler=metadata["scaler"] if metadata["wic_data"] is True else None,
             wic_score=metadata["wic_data"],
         )
 
@@ -447,10 +454,10 @@ def train(
             thresholds = get_thresholds(train_scores["score"])
             scaler = get_scaler(train_scores["score"])
 
-            metadata.update({"scaler": scaler})
-            metadata.update({"threshold": thresholds[hyperparameter["quantile"]]})
             metadata.pop("scaler", None)
             metadata.pop("threshold", None)
+            metadata.update({"scaler": scaler})
+            metadata.update({"threshold": thresholds[hyperparameter["quantile"]]})
 
         if method in ["ac", "sc"]:
             try:
@@ -467,8 +474,10 @@ def train(
                 jsd = get_predictions_without_nclusters(
                     get_clusters, train_scores, hyperparameter, metadata=metadata
                 )
-            except Exception:
+            except Exception as e:
                 logging.error(f"error processing parameters: {hyperparameter}")
+                print(e)
+                sys.exit(1)
                 continue
 
         logging.info("  calculating correlation ...")
@@ -561,7 +570,7 @@ def grid_search_without_nclusters(
         )
 
     if metadata["dataset"] == "dwug_en":
-        create_grouping(scores, metadata["prompts"])
+        create_grouping(scores, metadata["score_paths"], logging)
 
     results = cross_validation(
         hyperparameter_combinations, get_clusters, scores, metadata=metadata
@@ -573,36 +582,28 @@ def grid_search_without_nclusters(
 def grid_search(
     get_data: typing.Callable,
     get_clusters: typing.Callable,
-    model_hyperameter_combinations,
+    hyperparameter_combinations: list,
     metadata: dict = None,
 ):
     scores = {}
-    for prompt in metadata["prompts"]:
-        scores[prompt] = load_data(
-            f"{metadata['path_to_data']}/{prompt}", wic_data=metadata["wic_data"]
+    for sp in metadata["score_paths"]:
+        scores[sp] = load_data(
+            f"{metadata['path_to_data']}/{sp}", wic_data=metadata["wic_data"]
         )
 
     if metadata["dataset"] == "dwug_en":
-        create_grouping(scores, metadata["prompts"])
+        create_grouping(scores, metadata["score_paths"], logging)
 
     # scores = get_data()
-    hyperparameter_combinations = generate_hyperparameter_combinations(
-        model_hyperameter_combinations, metadata["fill_diagonal"], metadata["normalize"]
+
+    results = cross_validation(
+        hyperparameter_combinations,
+        get_clusters,
+        scores,
+        metadata=metadata,
     )
 
-    for prompt in metadata["prompts"]:
-        logging.info(f"prompt: {prompt}")
-
-        metadata.update({"prompt": prompt})
-
-        results = cross_validation(
-            hyperparameter_combinations,
-            get_clusters,
-            scores[prompt],
-            metadata=metadata,
-        )
-
-        save_cv_results(results, metadata=metadata)
+    save_cv_results(results, metadata=metadata)
 
 
 if __name__ == "__main__":
