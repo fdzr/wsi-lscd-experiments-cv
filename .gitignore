@@ -2,6 +2,10 @@ dwug_de_sense/
 dwug_de_sense.zip
 dwug_es/
 dwug_en/
+dwug_es_sense.csv
+dwug_en_sense.csv
+dwug_es_cleaned.zip
+dwug_es_cleaned/
 input/
 DMlong-latestDWUGdeSense-6wics/
 test_data*
