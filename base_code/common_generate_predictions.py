@@ -446,8 +446,9 @@ def get_predictions_without_nclusters(
     metadata: dict = None,
 ):
     logging.info("get predictions without nclusters ...")
-    words = scores.word.unique()
+    words = senses.word.unique()
     jsd = {}
+    ari = 0.0
 
     kfold = metadata["kfold"]
     name_file = metadata["name_file"]
@@ -455,24 +456,24 @@ def get_predictions_without_nclusters(
     for word in words:
         logging.info(f"processing word: {word}")
 
-        mask = scores["word"] == word
-        filtered_scores = scores[mask]
+        word_scores = scores[scores["word"] == word]
+        word_senses = senses[senses["word"] == word]
 
-        ids = set(filtered_scores["identifier1"].to_list()).union(
-            set(filtered_scores["identifier2"].to_list())
-        )
+        ids = word_senses["identifier"].tolist()
 
         grouping = pd.DataFrame({"ids": list(ids)})
         grouping["grouping"] = grouping.apply(
             lambda row: 1 if row["ids"].startswith("old") else 2, axis=1
         )
 
-        context = [ShortUse(word=word, id=id) for id in ids]
-        n_sentences = len(ids)
+        context = word_senses.apply(
+            lambda row: ShortUse(word=row["word"], id=row["identifier"]), axis=1
+        ).tolist()
+        n_sentences = len(context)
 
         id2int = {value: index for index, value in enumerate(context)}
         adj_matrix = get_adj_matrix(
-            filtered_scores,
+            word_scores,
             id2int,
             n_sentences,
             hyperparameter_combinations["fill_diagonal"],
@@ -488,20 +489,31 @@ def get_predictions_without_nclusters(
             adj_matrix, hyperparameter_combinations["model_hyperparameters"]
         )
 
+        clusters_predicted = word_senses.apply(
+            lambda row: clusters[
+                id2int[ShortUse(word=row["word"], id=row["identifier"])]
+            ],
+            axis=1,
+        ).tolist()
+        rand = metrics.adjusted_rand_score(word_senses["cluster"], clusters_predicted)
+        ari += rand
+
         pred_clusters = {c.id: clusters[id2int[c]] for id, c in enumerate(context)}
+
         jsd[word] = compute_jsd(pred_clusters, grouping)
         save_results(
             word,
             jsd[word],
             hyperparameter_combinations,
             f"{metadata['path_to_save_results']}/{kfold}_fold/{name_file}.csv",
+            ari=rand,
         )
 
         logging.info("predictions calculated ...")
 
     logging.info("returning predictions ...")
 
-    return jsd
+    return jsd, ari / len(words)
 
 
 def eval(
@@ -619,7 +631,11 @@ def train(
         else:
             try:
                 jsd, ari = get_predictions_without_nclusters(
-                    get_clusters, train_scores, hyperparameter, metadata=metadata
+                    get_clusters,
+                    train_scores,
+                    train_senses,
+                    hyperparameter,
+                    metadata=metadata,
                 )
             except Exception as e:
                 logging.error(f"error processing parameters: {hyperparameter}")
@@ -773,18 +789,23 @@ def grid_search_without_nclusters(
     hyperparameter_combinations: list,
     metadata: dict = None,
 ):
-    # scores = get_data()
     scores = {}
+    senses = pd.read_csv(f"{metadata['path_to_sense_data']}", sep="\t")
+
     for sp in metadata["score_paths"]:
         scores[sp] = load_data(
             f"{metadata['path_to_data']}/{sp}", wic_data=metadata["wic_data"]
         )
+        # scores[sp] = filter_scored_data(data, senses)
 
     if metadata["dataset"] == "dwug_en":
         create_grouping(scores, metadata["score_paths"], logging)
 
+    for sp in metadata["score_paths"]:
+        scores[sp] = filter_scored_data(scores[sp], senses)
+
     results = cross_validation(
-        hyperparameter_combinations, get_clusters, scores, metadata=metadata
+        hyperparameter_combinations, get_clusters, scores, senses, metadata=metadata
     )
 
     save_cv_results(results, metadata=metadata)
@@ -800,13 +821,16 @@ def grid_search(
     senses = pd.read_csv(f"{metadata['path_to_sense_data']}", sep="\t")
 
     for sp in metadata["score_paths"]:
-        data = load_data(
+        scores[sp] = load_data(
             f"{metadata['path_to_data']}/{sp}", wic_data=metadata["wic_data"]
         )
-        scores[sp] = filter_scored_data(data, senses)
+        # scores[sp] = filter_scored_data(data, senses)
 
     if metadata["dataset"] == "dwug_en":
         create_grouping(scores, metadata["score_paths"], logging)
+
+    for sp in metadata["score_paths"]:
+        scores[sp] = filter_scored_data(scores[sp], senses)
 
     results = cross_validation(
         hyperparameter_combinations,
