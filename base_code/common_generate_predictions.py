@@ -804,6 +804,8 @@ def grid_search_without_nclusters(
     for sp in metadata["score_paths"]:
         scores[sp] = filter_scored_data(scores[sp], senses)
 
+    metadata["wic_data"] = True
+
     results = cross_validation(
         hyperparameter_combinations, get_clusters, scores, senses, metadata=metadata
     )
@@ -831,6 +833,8 @@ def grid_search(
 
     for sp in metadata["score_paths"]:
         scores[sp] = filter_scored_data(scores[sp], senses)
+
+    metadata["wic_data"] = True
 
     results = cross_validation(
         hyperparameter_combinations,
