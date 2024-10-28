@@ -6,7 +6,6 @@ import pandas as pd
 
 
 def build_id(row: pd.Series):
-
     year = int(row["identifier1"].split("_")[1])
     preffix = "old" if year < 1900 else "new"
     row["identifier1"] = f"{preffix}_{row['identifier1']}"
