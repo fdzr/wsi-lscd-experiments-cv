@@ -27,3 +27,7 @@ def create_grouping(data: dict, prompts: list, logger):
 
         if logger is not None:
             logger.info(f"grouping created for model: {prompt}")
+
+
+def create_ids(data: pd.DataFrame):
+    return data.apply(lambda row: build_id(row), axis=1)
